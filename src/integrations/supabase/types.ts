@@ -193,22 +193,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_access_message: {
-        Args: { _message_id: string; _user_id: string }
-        Returns: boolean
-      }
-      is_contact: {
-        Args: { _contact: string; _owner: string }
-        Returns: boolean
-      }
-      is_conversation_participant: {
-        Args: { _conversation_id: string; _user_id: string }
-        Returns: boolean
-      }
-      users_share_conversation: {
-        Args: { _a: string; _b: string }
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
