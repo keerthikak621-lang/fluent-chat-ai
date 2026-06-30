@@ -1,71 +1,91 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, SendHorizonal, Sparkles } from "lucide-react";
+import { Loader2, SendHorizonal, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { getMessages, sendMessage } from "@/lib/chat.functions";
+import { loadConversation, sendMessage } from "@/lib/chat.functions";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
-export function ChatWindow({ threadId }: { threadId: string }) {
+export function ChatWindow({ conversationId }: { conversationId: string }) {
   const queryClient = useQueryClient();
-  const getMessagesFn = useServerFn(getMessages);
-  const sendMessageFn = useServerFn(sendMessage);
+  const loadFn = useServerFn(loadConversation);
+  const sendFn = useServerFn(sendMessage);
 
   const [draft, setDraft] = useState("");
-  // Optimistic items rendered while the server pipeline runs.
   const [optimistic, setOptimistic] = useState<ChatMessage[]>([]);
-
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: messages = [], isLoading } = useQuery({
-    queryKey: ["messages", threadId],
-    queryFn: () => getMessagesFn({ data: { sessionId: threadId } }),
+  const { data, isLoading } = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: () => loadFn({ data: { conversationId } }),
   });
 
+  // Live updates: refetch whenever a message lands in this conversation.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`messages:${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, queryClient]);
+
   const sendMutation = useMutation({
-    mutationFn: (text: string) => sendMessageFn({ data: { sessionId: threadId, text } }),
+    mutationFn: (text: string) => sendFn({ data: { conversationId, text } }),
     onSuccess: () => {
       setOptimistic([]);
-      queryClient.invalidateQueries({ queryKey: ["messages", threadId] });
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
     onError: (err) => {
-      // Roll back the optimistic user bubble and restore the draft.
       setOptimistic((prev) => {
-        const failed = prev.find((m) => m.role === "user");
+        const failed = prev[0];
         if (failed) setDraft(failed.original_text);
         return [];
       });
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("RATE_LIMIT")) toast.error("Too many requests — please wait a moment.");
-      else if (msg.includes("CREDITS_EXHAUSTED")) toast.error("AI credits exhausted. Add credits to continue.");
+      else if (msg.includes("CREDITS_EXHAUSTED")) toast.error("Translation credits exhausted.");
       else toast.error("Message failed to send. Please try again.");
     },
   });
 
-  const allMessages = useMemo(() => [...messages, ...optimistic], [messages, optimistic]);
+  const allMessages = useMemo(
+    () => [...(data?.messages ?? []), ...optimistic],
+    [data?.messages, optimistic],
+  );
 
-  // Keep the view pinned to the newest message.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [allMessages.length, sendMutation.isPending]);
 
   function handleSend() {
     const text = draft.trim();
-    if (!text || sendMutation.isPending) return;
+    if (!text || sendMutation.isPending || !data) return;
     setDraft("");
     setOptimistic([
       {
         id: `optimistic-${Date.now()}`,
-        role: "user",
+        sender_id: data.meId,
+        sender_name: "You",
+        is_me: true,
         original_text: text,
-        original_language: null,
-        translated_text: null,
-        display_language: null,
+        original_language: data.viewerLanguage,
+        translated_text: text,
+        translated_language: data.viewerLanguage,
         created_at: new Date().toISOString(),
         pending: true,
       },
@@ -81,22 +101,46 @@ export function ChatWindow({ threadId }: { threadId: string }) {
     }
   }
 
+  const convo = data?.conversation;
+  const others = convo?.participants.filter((p) => p.id !== data?.meId) ?? [];
+  const headerTitle = convo?.is_group
+    ? convo.title || "Group chat"
+    : others[0]?.display_name || others[0]?.username || "Conversation";
+  const headerSub = convo?.is_group
+    ? `${convo.participants.length} members`
+    : others[0]
+      ? `@${others[0].username}`
+      : "";
+
   return (
     <div className="flex h-full flex-col">
+      {/* Conversation header */}
+      <div className="flex items-center gap-3 border-b border-border px-4 py-3 sm:px-8">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+          {convo?.is_group ? <Users className="h-4 w-4" /> : headerTitle.charAt(0).toUpperCase()}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{headerTitle}</p>
+          {headerSub && <p className="truncate text-xs text-muted-foreground">{headerSub}</p>}
+        </div>
+      </div>
+
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           {isLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : allMessages.length === 0 ? (
-            <EmptyState />
+            <div className="py-16 text-center text-sm text-muted-foreground">
+              No messages yet. Say hello — it'll arrive in their language.
+            </div>
           ) : (
-            allMessages.map((m) => <MessageBubble key={m.id} message={m} />)
+            allMessages.map((m) => (
+              <MessageBubble key={m.id} message={m} showSender={!!convo?.is_group} />
+            ))
           )}
-
-          {sendMutation.isPending && <TypingIndicator />}
         </div>
       </div>
 
@@ -108,7 +152,7 @@ export function ChatWindow({ threadId }: { threadId: string }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type in any language…"
+            placeholder="Type your message…"
             rows={1}
             className="max-h-40 min-h-[44px] flex-1 resize-none"
           />
@@ -127,38 +171,8 @@ export function ChatWindow({ threadId }: { threadId: string }) {
           </Button>
         </div>
         <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted-foreground">
-          Lingua auto-detects your language and replies in your preferred language.
+          Messages are auto-translated into each person's preferred language.
         </p>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        <Sparkles className="h-7 w-7" />
-      </span>
-      <h2 className="text-xl font-bold">Start the conversation</h2>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        Write in your own language. Lingua translates it, thinks in context, and answers in the
-        language you prefer.
-      </p>
-    </div>
-  );
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Sparkles className="h-4 w-4" />
-      </div>
-      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-border bg-assistant-bubble px-4 py-3">
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.3s]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.15s]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60" />
       </div>
     </div>
   );

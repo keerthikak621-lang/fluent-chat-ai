@@ -9,5 +9,5 @@ export const Route = createFileRoute("/_authenticated/chat/$threadId")({
 function ThreadRoute() {
   const { threadId } = Route.useParams();
   // `key` forces a clean remount (and fresh local state) per conversation.
-  return <ChatWindow key={threadId} threadId={threadId} />;
+  return <ChatWindow key={threadId} conversationId={threadId} />;
 }
