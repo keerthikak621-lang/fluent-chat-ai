@@ -1,43 +1,40 @@
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { Languages, Sparkles } from "lucide-react";
+import { Languages } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { languageMeta, isRtl } from "@/lib/languages";
+import type { ConversationMessage } from "@/lib/chat.functions";
 
-export interface ChatMessage {
-  id: string;
-  role: string;
-  original_text: string;
-  original_language: string | null;
-  translated_text: string | null;
-  display_language: string | null;
-  created_at: string;
-  pending?: boolean;
-}
+export type ChatMessage = ConversationMessage & { pending?: boolean };
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user";
-  const [showEnglish, setShowEnglish] = useState(false);
+export function MessageBubble({
+  message,
+  showSender,
+}: {
+  message: ChatMessage;
+  showSender?: boolean;
+}) {
+  const isUser = message.is_me;
+  const [showOriginal, setShowOriginal] = useState(false);
 
-  const langCode = message.display_language ?? message.original_language;
-  const meta = languageMeta(langCode);
-  const rtl = isRtl(langCode);
+  // The sender sees their own text untranslated; recipients see the translation
+  // into their preferred language, with a toggle to reveal the original.
+  const wasTranslated =
+    !isUser && message.original_language !== message.translated_language &&
+    message.translated_text.trim() !== message.original_text.trim();
 
-  // The "translation toggle" reveals the English pivot the AI worked with,
-  // but only when it actually differs from what is displayed.
-  const english = message.translated_text?.trim();
-  const canToggle = !!english && english !== message.original_text.trim() && langCode !== "en";
+  const shown = showOriginal ? message.original_text : message.translated_text;
+  const shownLang = showOriginal ? message.original_language : message.translated_language;
+  const rtl = isRtl(shownLang);
+  const meta = languageMeta(shownLang);
 
   return (
-    <div className={cn("flex w-full gap-3", isUser ? "justify-end" : "justify-start")}>
-      {!isUser && (
-        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Sparkles className="h-4 w-4" />
-        </div>
+    <div className={cn("flex w-full flex-col gap-1", isUser ? "items-end" : "items-start")}>
+      {showSender && !isUser && (
+        <span className="px-1 text-xs font-medium text-muted-foreground">{message.sender_name}</span>
       )}
 
-      <div className={cn("flex max-w-[78%] flex-col gap-1", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex max-w-[80%] flex-col gap-1", isUser ? "items-end" : "items-start")}>
         <div
           dir={rtl ? "rtl" : "ltr"}
           className={cn(
@@ -48,27 +45,21 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             message.pending && "opacity-70",
           )}
         >
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.original_text}</p>
-          ) : (
-            <div className="prose-chat break-words">
-              <ReactMarkdown>{showEnglish ? english || message.original_text : message.original_text}</ReactMarkdown>
-            </div>
-          )}
+          <p className="whitespace-pre-wrap break-words">{shown}</p>
         </div>
 
         <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
           <span>
             {meta.flag} {meta.native}
           </span>
-          {canToggle && (
+          {wasTranslated && (
             <button
               type="button"
-              onClick={() => setShowEnglish((v) => !v)}
+              onClick={() => setShowOriginal((v) => !v)}
               className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors hover:bg-muted hover:text-foreground"
             >
               <Languages className="h-3 w-3" />
-              {showEnglish ? "Show original" : "Show English"}
+              {showOriginal ? "Show translation" : "Show original"}
             </button>
           )}
         </div>
