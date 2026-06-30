@@ -19,7 +19,6 @@ import {
   listConversations,
   searchUsers,
   addContact,
-  removeContact,
   getOrCreateDirectConversation,
   createGroupConversation,
   getProfile,
