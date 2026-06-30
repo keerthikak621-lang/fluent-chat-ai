@@ -38,6 +38,7 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   // Signup-only fields
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
   const [preferredLanguage, setPreferredLanguage] = useState("en");
 
   // Redirect away if already authenticated.
@@ -77,7 +78,11 @@ function AuthPage() {
         password,
         options: {
           emailRedirectTo: window.location.origin,
-          data: { display_name: displayName || email.split("@")[0], preferred_language: preferredLanguage },
+          data: {
+            display_name: displayName || email.split("@")[0],
+            username: username || undefined,
+            preferred_language: preferredLanguage,
+          },
         },
       });
       if (error) throw error;
