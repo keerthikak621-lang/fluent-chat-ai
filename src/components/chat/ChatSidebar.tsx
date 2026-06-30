@@ -22,6 +22,7 @@ import {
   removeContact,
   getOrCreateDirectConversation,
   createGroupConversation,
+  getProfile,
   type PublicUser,
 } from "@/lib/chat.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +50,9 @@ export function ChatSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const listConvosFn = useServerFn(listConversations);
   const listContactsFn = useServerFn(listContacts);
   const openDmFn = useServerFn(getOrCreateDirectConversation);
+  const getProfileFn = useServerFn(getProfile);
+
+  const { data: me } = useQuery({ queryKey: ["profile"], queryFn: () => getProfileFn() });
 
   const { data: conversations = [], isLoading: convosLoading } = useQuery({
     queryKey: ["conversations"],
@@ -78,7 +82,7 @@ export function ChatSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   function convoLabel(c: (typeof conversations)[number]) {
     if (c.is_group) return c.title || "Group chat";
-    const other = c.participants.find((p) => p.id !== meId.data?.id) ?? c.participants[0];
+    const other = c.participants.find((p) => p.id !== me?.id) ?? c.participants[0];
     return other?.display_name || other?.username || "Conversation";
   }
 
