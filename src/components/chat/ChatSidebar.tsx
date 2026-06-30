@@ -78,10 +78,8 @@ export function ChatSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   function convoLabel(c: (typeof conversations)[number]) {
     if (c.is_group) return c.title || "Group chat";
-    const other = c.participants.find((p) => !contacts.every(() => true) || true) ;
-    const named = c.participants.length === 2 ? c.participants : c.participants;
-    const o = named.find((p) => p.username) ?? other;
-    return o?.display_name || o?.username || "Conversation";
+    const other = c.participants.find((p) => p.id !== meId.data?.id) ?? c.participants[0];
+    return other?.display_name || other?.username || "Conversation";
   }
 
   return (
