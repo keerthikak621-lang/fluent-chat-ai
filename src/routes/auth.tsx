@@ -192,6 +192,11 @@ function AuthPage() {
                     placeholder="Alex" />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="su-username">Username</Label>
+                  <Input id="su-username" value={username} onChange={(e) => setUsername(e.target.value)}
+                    placeholder="alex" autoCapitalize="none" />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="su-email">Email</Label>
                   <Input id="su-email" type="email" autoComplete="email" required value={email}
                     onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
